@@ -1,0 +1,84 @@
+import os
+import glob
+from langchain_community.document_loaders import TextLoader, UnstructuredFileLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Qdrant
+from qdrant_client import QdrantClient
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+DATA_DIR = "data/rag_source"
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+def process_rag():
+    if not OPENAI_API_KEY:
+        print("Error: OPENAI_API_KEY not found in .env")
+        return
+
+    print("Starting RAG processing...")
+    
+    # 1. Load Documents
+    documents = []
+    # simple glob for txt files, can be expanded
+    file_paths = glob.glob(os.path.join(DATA_DIR, "*"))
+    
+    if not file_paths:
+        print(f"No files found in {DATA_DIR}")
+        return
+
+    for file_path in file_paths:
+        try:
+            # Using Unstructured for versatility if available, else TextLoader
+            if file_path.endswith(".txt"):
+                loader = TextLoader(file_path)
+            else:
+                # Fallback or specific loaders can be added here
+                print(f"Skipping unsupported file type: {file_path}")
+                continue
+                
+            docs = loader.load()
+            # Add metadata if needed
+            for doc in docs:
+                doc.metadata["source"] = os.path.basename(file_path)
+            documents.extend(docs)
+            print(f"Loaded {len(docs)} documents from {file_path}")
+        except Exception as e:
+            print(f"Error loading {file_path}: {e}")
+
+    if not documents:
+        print("No valid documents to process.")
+        return
+
+    # 2. Split Text
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    texts = text_splitter.split_documents(documents)
+    print(f"Split into {len(texts)} chunks.")
+
+    # 3. Embed and Store in Qdrant
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    
+    try:
+        url = QdrantClient(url=QDRANT_URL)
+        # Verify connection
+        # url.get_collections()
+        
+        Qdrant.from_documents(
+            texts,
+            embeddings,
+            url=QDRANT_URL,
+            collection_name="rag_documents",
+            force_recreate=True # Overwrite for simplicity in this script
+        )
+        print("Successfully indexed documents to Qdrant.")
+    except Exception as e:
+        print(f"Error connecting to Qdrant or indexing: {e}")
+
+if __name__ == "__main__":
+    process_rag()

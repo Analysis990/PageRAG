@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PageRAG AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar (Optional, for history or settings) -->
+        <aside class="sidebar">
+            <div class="new-chat">
+                <span class="material-icons-round">add</span>
+                <span>New Chat</span>
+            </div>
+            <div class="history-list">
+                <!-- Chat history items would go here -->
+                <div class="history-item">Previous Conversation...</div>
+            </div>
+            <div class="settings">
+                <span class="material-icons-round">settings</span>
+                <span>Settings</span>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-area">
+            <header class="top-bar">
+                <div class="model-selector">
+                    <span>PageRAG 1.0</span>
+                    <span class="material-icons-round">expand_more</span>
+                </div>
+            </header>
+
+            <div class="messages-container" id="messages-container">
+                <!-- Welcome Message -->
+                <div class="message ai-message">
+                    <div class="avatar">
+                        <span class="material-icons-round">auto_awesome</span>
+                    </div>
+                    <div class="content">
+                        <p>Hello! I'm PageRAG. How can I help you today?</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="tool-bar">
+                    <div class="tool-selector" id="tool-selector">
+                        <span class="material-icons-round" id="current-tool-icon">chat</span>
+                        <span id="current-tool-name">Chat</span>
+                        <span class="material-icons-round">arrow_drop_down</span>
+                    </div>
+                    <!-- Tool Menu (Hidden by default) -->
+                    <div class="tool-menu hidden" id="tool-menu">
+                        <div class="tool-option active" data-tool="chat">
+                            <span class="material-icons-round">chat</span>
+                            <span>General Chat</span>
+                        </div>
+                        <div class="tool-option" data-tool="find_document">
+                            <span class="material-icons-round">article</span>
+                            <span>Find Documents (PageIndex)</span>
+                        </div>
+                        <div class="tool-option disabled">
+                            <span class="material-icons-round">description</span>
+                            <span>Generate Document (Coming Soon)</span>
+                        </div>
+                        <div class="tool-option disabled">
+                            <span class="material-icons-round">trending_up</span>
+                            <span>Financial Research (Coming Soon)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-wrapper">
+                    <textarea id="user-input" placeholder="Type a message..." rows="1"></textarea>
+                    <button id="send-btn">
+                        <span class="material-icons-round">send</span>
+                    </button>
+                    <!-- Upload Button -->
+                     <button id="upload-btn" onclick="document.getElementById('file-upload').click()">
+                        <span class="material-icons-round">attach_file</span>
+                    </button>
+                    <input type="file" id="file-upload" style="display: none;">
+                </div>
+                <div class="footer-text">
+                    PageRAG can make mistakes. Consider checking important information.
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+python-dotenv
+# RAG
+langchain
+langchain-openai
+langchain-community
+qdrant-client
+# Utilities
+httpx
+pydantic

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pagerag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ../app:/app/app
+      - ../data:/app/data
+      - ../scripts:/app/scripts
+    depends_on:
+      - qdrant
+    networks:
+      - pagerag-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: pagerag-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ../data/qdrant_data:/qdrant/storage
+    networks:
+      - pagerag-network
+
+networks:
+  pagerag-network:
+    driver: bridge
