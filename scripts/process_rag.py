@@ -73,24 +73,28 @@ def process_rag():
         # 1. Initialize the native Qdrant client
         client = QdrantClient(url=QDRANT_URL)
         
-        # 2. Manually recreate the collection (equivalent to force_recreate=True)
-        # Using 1536 as the size because OpenAI text-embedding-3-small outputs 1536 dimensions
-        client.recreate_collection(
-            collection_name="rag_documents",
-            vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE),
-        )
+        # 2. Check and Create collection if it doesn't exist
+        # If it EXISTS, we DO NOT recreate it, effectively making this an "Append" operation
+        if not client.collection_exists("rag_documents"):
+            print("Creating new collection: rag_documents")
+            client.create_collection(
+                collection_name="rag_documents",
+                vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE),
+            )
+        else:
+            print("Collection 'rag_documents' already exists. Adding new data...")
         
-        # 3. Initialize the LangChain Qdrant wrapper with the existing client
+        # 3. Initialize the LangChain Qdrant wrapper
         qdrant = Qdrant(
             client=client,
             collection_name="rag_documents",
             embeddings=embeddings
         )
         
-        # 4. Add the documents
+        # 4. Add the documents (Incremental)
         qdrant.add_documents(texts)
         
-        print(f"Successfully indexed {len(texts)} chunks to Qdrant collection 'rag_documents'.")
+        print(f"Successfully indexed {len(texts)} chunks to Qdrant. Total documents processed in this batch: {len(file_paths)}")
     except Exception as e:
         print(f"Error connecting to Qdrant or indexing: {e}")
 
