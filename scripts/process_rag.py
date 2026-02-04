@@ -69,18 +69,28 @@ def process_rag():
     embeddings = OpenAIEmbeddings(**embeddings_kwargs)
     
     try:
-        url = QdrantClient(url=QDRANT_URL)
-        # Verify connection
-        # url.get_collections()
+        from qdrant_client.http import models
+        # 1. Initialize the native Qdrant client
+        client = QdrantClient(url=QDRANT_URL)
         
-        Qdrant.from_documents(
-            texts,
-            embeddings,
-            url=QDRANT_URL,
+        # 2. Manually recreate the collection (equivalent to force_recreate=True)
+        # Using 1536 as the size because OpenAI text-embedding-3-small outputs 1536 dimensions
+        client.recreate_collection(
             collection_name="rag_documents",
-            force_recreate=True # Overwrite for simplicity in this script
+            vectors_config=models.VectorParams(size=1536, distance=models.Distance.COSINE),
         )
-        print("Successfully indexed documents to Qdrant.")
+        
+        # 3. Initialize the LangChain Qdrant wrapper with the existing client
+        qdrant = Qdrant(
+            client=client,
+            collection_name="rag_documents",
+            embeddings=embeddings
+        )
+        
+        # 4. Add the documents
+        qdrant.add_documents(texts)
+        
+        print(f"Successfully indexed {len(texts)} chunks to Qdrant collection 'rag_documents'.")
     except Exception as e:
         print(f"Error connecting to Qdrant or indexing: {e}")
 

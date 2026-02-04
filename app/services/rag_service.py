@@ -27,11 +27,11 @@ async def query(message: str):
         openai_client = OpenAI(**client_kwargs)
 
         # 2. Check if Qdrant collection exists
-        qdrant_client = QdrantClient(url=QDRANT_URL)
+        client = QdrantClient(url=QDRANT_URL)
         
         collection_exists = False
         try:
-            collections = qdrant_client.get_collections()
+            collections = client.get_collections()
             collection_exists = any(c.name == "rag_documents" for c in collections.collections)
         except Exception as qe:
             print(f"Qdrant Check Error: {qe}")
@@ -58,12 +58,13 @@ async def query(message: str):
         )
         query_vector = embeddings_response.data[0].embedding
         
-        # Search in Qdrant
-        search_results = qdrant_client.search(
+        # Search in Qdrant (使用較新的 query_points API，因為部分版本 search 已不推薦或不存在)
+        search_response = client.query_points(
             collection_name="rag_documents",
-            query_vector=query_vector,
+            query=query_vector,
             limit=3
         )
+        search_results = search_response.points
         
         if not search_results:
             # Fallback to direct LLM if no relevant chunks found

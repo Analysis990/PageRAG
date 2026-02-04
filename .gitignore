@@ -51,10 +51,7 @@ data/qdrant_data/
 data/pageindex_indices/
 
 # Ignore source documents for RAG and PageIndex as they might be large/private
-data/rag_source/*
-!data/rag_source/.gitkeep
-data/file/*
-!data/file/.gitkeep
+
 
 # Logs
 *.log
