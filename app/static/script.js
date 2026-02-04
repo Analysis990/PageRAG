@@ -102,7 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData();
         formData.append('file', file);
 
-        addMessage(`Uploading ${file.name}...`, 'system');
+        // Show upload started message
+        const uploadMsgId = addMessage(`📤 Uploading ${file.name}...`, 'system');
 
         try {
             const response = await fetch('/api/upload', {
@@ -110,14 +111,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: formData
             });
             const data = await response.json();
+
+            // Remove upload message
+            removeMessage(uploadMsgId);
+
             if (response.ok) {
-                addMessage(`File uploaded: ${data.filename}`, 'system');
+                // Show status based on processing result
+                if (data.status === 'success') {
+                    addMessage(`✅ ${data.message || 'File uploaded and processed successfully!'}`, 'system');
+                    addMessage('💡 You can now switch to "Find Documents" mode to search this file.', 'system');
+                } else if (data.status === 'partial') {
+                    addMessage(`⚠️ ${data.message || 'File uploaded but processing incomplete.'}`, 'system');
+                } else if (data.status === 'failed') {
+                    addMessage(`❌ ${data.message || 'Processing failed.'}`, 'system');
+                }
             } else {
-                addMessage(`Upload failed: ${data.detail}`, 'system');
+                addMessage(`❌ Upload failed: ${data.detail}`, 'system');
             }
         } catch (error) {
-            addMessage(`Upload error: ${error.message}`, 'system');
+            removeMessage(uploadMsgId);
+            addMessage(`❌ Upload error: ${error.message}`, 'system');
         }
+
+        // Reset file input
+        e.target.value = '';
     });
 
     // UI Helpers

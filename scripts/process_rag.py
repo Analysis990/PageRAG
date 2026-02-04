@@ -1,7 +1,7 @@
 import os
 import glob
 from langchain_community.document_loaders import TextLoader, UnstructuredFileLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Qdrant
 from qdrant_client import QdrantClient
@@ -13,6 +13,7 @@ load_dotenv()
 DATA_DIR = "data/rag_source"
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 
 def process_rag():
     if not OPENAI_API_KEY:
@@ -62,7 +63,10 @@ def process_rag():
     print(f"Split into {len(texts)} chunks.")
 
     # 3. Embed and Store in Qdrant
-    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    embeddings_kwargs = {"openai_api_key": OPENAI_API_KEY}
+    if OPENAI_BASE_URL:
+        embeddings_kwargs["openai_api_base"] = OPENAI_BASE_URL
+    embeddings = OpenAIEmbeddings(**embeddings_kwargs)
     
     try:
         url = QdrantClient(url=QDRANT_URL)

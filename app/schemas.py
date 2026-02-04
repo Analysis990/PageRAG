@@ -7,7 +7,8 @@ class ChatRequest(BaseModel):
 
 class FileUploadResponse(BaseModel):
     filename: str
-    status: str
+    status: str  # "success", "failed", "partial"
+    message: Optional[str] = None  # Detailed status message
 
 class ChatResponse(BaseModel):
     response: str

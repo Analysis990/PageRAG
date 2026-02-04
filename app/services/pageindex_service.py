@@ -2,8 +2,9 @@ import os
 import sys
 import json
 import glob
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Any
 from dotenv import load_dotenv
+import fitz  # PyMuPDF
 
 # Add PageIndex library to path for utility functions
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'lib', 'PageIndex'))
@@ -12,100 +13,156 @@ from openai import OpenAI
 
 load_dotenv()
 
-INDEX_DIR = "data/pageindex_indices"
+INDEX_DIR = "lib/PageIndex/tests/results"
+PDF_DIR = "lib/PageIndex/tests/pdfs"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("CHATGPT_API_KEY")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
+OPENAI_MODEL = "gpt-4o-mini"
+# OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini") # 改為 gpt-4o-mini 以支援更大 Context
+
+def extract_text_from_pdf(doc_name: str, start_page: int, end_page: int) -> str:
+    """從 PDF 文件的特定頁碼範圍提取文字 (1-based index)。"""
+    pdf_path = os.path.join(PDF_DIR, f"{doc_name}.pdf")
+    if not os.path.exists(pdf_path):
+        return ""
+    
+    try:
+        doc = fitz.open(pdf_path)
+        text = ""
+        # 配合 search.py 的邏輯：1-based 轉 0-based
+        start_idx = max(0, start_page - 1)
+        end_idx = min(doc.page_count, end_page)
+        
+        for i in range(start_idx, end_idx):
+            text += doc[i].get_text() + "\n"
+        doc.close()
+        return text
+    except Exception as e:
+        print(f"提取 PDF 文字時出錯: {e}")
+        return ""
 
 async def query(message: str) -> Tuple[str, List[str]]:
     """
-    Query the PageIndex system for specific documents.
-    Uses the pre-built tree indices to navigate and find relevant content.
+    完全比照 PageIndex/search.py 的四階段查詢邏輯。
     """
-    
     if not OPENAI_API_KEY:
-        return "Error: OPENAI_API_KEY or CHATGPT_API_KEY not found.", []
+        return "錯誤：找不到 OPENAI_API_KEY 或 CHATGPT_API_KEY。", []
     
     try:
-        # Load all available tree indices
+        # 1. 加載文檔結構 (Step 1: Load Structure)
         index_files = glob.glob(os.path.join(INDEX_DIR, "*_structure.json"))
-        
         if not index_files:
-            return "No PageIndex indices found. Please run 'python scripts/process_pageindex.py' first to index your PDF documents.", []
+            return "找不到索引檔案。請先執行 'python scripts/process_pageindex.py'。", []
         
-        # Load indices
         indices = {}
         for index_file in index_files:
             doc_name = os.path.basename(index_file).replace("_structure.json", "")
             with open(index_file, 'r', encoding='utf-8') as f:
                 indices[doc_name] = json.load(f)
+
+        # 初始化 OpenAI Client
+        client_kwargs = {"api_key": OPENAI_API_KEY}
+        if OPENAI_BASE_URL:
+            client_kwargs["base_url"] = OPENAI_BASE_URL
+        client = OpenAI(**client_kwargs)
+
+        # 1.5 文件初選 (如果有多份文件)
+        doc_descriptions = "\n".join([f"- {name}" for name in indices.keys()])
+        doc_selection_prompt = f"從以下文件中挑選最相關的一個：\n{doc_descriptions}\n問題：{message}\n請直接輸出名稱。"
         
-        # Step 1: Determine which document(s) are most relevant
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
-        doc_descriptions = "\n".join([
-            f"- {name}: {get_tree_summary(tree)}" 
-            for name, tree in indices.items()
-        ])
-        
-        doc_selection_prompt = f"""Given the following indexed documents and their descriptions:
-
-{doc_descriptions}
-
-User question: {message}
-
-Which document(s) would be most relevant to answer this question? 
-Respond with ONLY the document name(s), comma-separated if multiple."""
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+        res = client.chat.completions.create(
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": doc_selection_prompt}],
             temperature=0
         )
-        
-        selected_docs = response.choices[0].message.content.strip().split(',')
-        selected_docs = [doc.strip() for doc in selected_docs if doc.strip() in indices]
-        
-        if not selected_docs:
-            selected_docs = list(indices.keys())[:1]  # Fallback to first doc
-        
-        # Step 2: Navigate the tree structure to find relevant sections
-        relevant_sections = []
-        for doc_name in selected_docs:
-            tree = indices[doc_name]
-            sections = navigate_tree(tree, message, client, max_depth=3)
-            relevant_sections.extend([(doc_name, section) for section in sections])
-        
-        if not relevant_sections:
-            return f"I found the documents but couldn't locate relevant sections for your query in {', '.join(selected_docs)}.", selected_docs
-        
-        # Step 3: Generate answer based on relevant sections
-        context = "\n\n".join([
-            f"From {doc_name}, Section: {section.get('title', 'Untitled')}\n{section.get('summary', section.get('text', ''))}"
-            for doc_name, section in relevant_sections[:3]  # Top 3 sections
-        ])
-        
-        answer_prompt = f"""Based on the following excerpts from documents:
+        selected_doc = res.choices[0].message.content.strip()
+        if selected_doc not in indices:
+            selected_doc = list(indices.keys())[0]
 
-{context}
+        # 2. 樹搜索階段 (Step 2: Tree Search)
+        # 取得該文件的結構
+        index_data = indices[selected_doc]
+        tree_structure = index_data.get('structure', index_data) if isinstance(index_data, dict) else index_data
 
-Please answer this question: {message}
+        search_prompt = f"""
+        You are given a question and a tree structure of a document.
+        Each node contains a title and page range (start_index, end_index).
+        Your task is to identify the nodes that are most likely to contain the answer to the question.
 
-Provide a clear and concise answer based on the information provided."""
+        Question: {message}
 
-        answer_response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+        Document Structure:
+        {json.dumps(tree_structure, indent=2, ensure_ascii=False)}
+
+        Please return a JSON object with the following format:
+        {{
+            "thinking": "繁體中文解釋你的分析邏輯...",
+            "relevant_nodes": [
+                {{
+                    "title": "Node Title",
+                    "start_index": <start_page_number>,
+                    "end_index": <end_page_number>
+                }}
+            ]
+        }}
+        Directly return the JSON only. 務必使用繁體中文進行思考說明。
+        """
+
+        search_res = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "user", "content": search_prompt}],
+            temperature=0
+        )
+        
+        raw_search = search_res.choices[0].message.content.strip()
+        if "```json" in raw_search:
+            raw_search = raw_search.split("```json")[1].split("```")[0]
+        elif "```" in raw_search:
+            raw_search = raw_search.split("```")[1].split("```")[0]
+            
+        search_result = json.loads(raw_search)
+        nodes = search_result.get("relevant_nodes", [])
+
+        # 3. 內容提取階段 (Step 3: Content Extraction)
+        context_text = ""
+        for node in nodes:
+            start = node.get("start_index")
+            end = node.get("end_index")
+            title = node.get("title")
+            if start is not None and end is not None:
+                text = extract_text_from_pdf(selected_doc, start, end)
+                context_text += f"\n--- Section: {title} (Pages {start}-{end}) ---\n{text}\n"
+
+        if not context_text:
+            return "無法從文件中提取相關內容。", [f"{selected_doc}.pdf"]
+
+        # 4. 答案生成階段 (Step 4: Answer Generation)
+        answer_prompt = f"""你是一個專業的分析師。請根據以下提供的上下文內容回答問題。
+
+### 上下文內容：
+{context_text}
+
+### 使用者問題：
+{message}
+
+### 回答規範：
+1. 必須使用繁體中文。
+2. 根據提供的內容進行精確回答，列出具體數字和金額。
+3. 如果內容中沒有答案，請說不知道。
+
+答案："""
+
+        answer_res = client.chat.completions.create(
+            model=OPENAI_MODEL,
             messages=[{"role": "user", "content": answer_prompt}],
             temperature=0
         )
         
-        answer = answer_response.choices[0].message.content
-        
-        return answer, [f"{doc}.pdf" for doc in selected_docs]
-        
+        return answer_res.choices[0].message.content, [f"{selected_doc}.pdf"]
+
     except Exception as e:
         print(f"PageIndex Query Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return f"Error processing PageIndex query: {str(e)}", []
+        return f"查詢出錯：{str(e)}", []
 
 
 def get_tree_summary(tree: dict) -> str:
@@ -115,60 +172,4 @@ def get_tree_summary(tree: dict) -> str:
             return tree['doc_description']
         if 'title' in tree:
             return tree['title']
-        if 'children' in tree and tree['children']:
-            return f"Document with {len(tree['children'])} sections"
     return "Indexed document"
-
-
-def navigate_tree(node: dict, query: str, client: OpenAI, current_depth: int = 0, max_depth: int = 3) -> List[dict]:
-    """
-    Recursively navigate the tree structure using LLM reasoning to find relevant sections.
-    """
-    if current_depth >= max_depth:
-        return [node] if is_leaf_or_relevant(node) else []
-    
-    # If it's a leaf node, return it
-    if 'children' not in node or not node['children']:
-        return [node]
-    
-    # Use LLM to decide which children to explore
-    children_summaries = []
-    for i, child in enumerate(node['children']):
-        title = child.get('title', f'Section {i+1}')
-        summary = child.get('summary', child.get('node_id', ''))
-        children_summaries.append(f"{i}: {title} - {summary}")
-    
-    navigation_prompt = f"""Given this query: "{query}"
-
-The current section has the following subsections:
-{chr(10).join(children_summaries)}
-
-Which subsection(s) (by number) would be most relevant to explore? 
-Respond with ONLY the numbers, comma-separated (e.g., "0,2" or "1"). Maximum 2 selections."""
-
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": navigation_prompt}],
-            temperature=0
-        )
-        
-        selected = response.choices[0].message.content.strip()
-        indices = [int(x.strip()) for x in selected.split(',') if x.strip().isdigit()]
-        indices = [i for i in indices if 0 <= i < len(node['children'])][:2]
-        
-    except:
-        # Fallback: take first child
-        indices = [0]
-    
-    # Recursively explore selected children
-    results = []
-    for idx in indices:
-        results.extend(navigate_tree(node['children'][idx], query, client, current_depth + 1, max_depth))
-    
-    return results if results else [node]
-
-
-def is_leaf_or_relevant(node: dict) -> bool:
-    """Check if a node is a leaf or contains relevant content."""
-    return 'text' in node or ('children' not in node or not node['children'])

@@ -13,8 +13,8 @@ from pageindex import page_index_main, config
 # Load environment variables
 load_dotenv()
 
-DATA_DIR = "data/file"
-INDEX_DIR = "data/pageindex_indices"
+DATA_DIR = "lib/PageIndex/tests/pdfs"
+INDEX_DIR = "lib/PageIndex/tests/results"
 
 def process_pageindex():
     """
@@ -31,15 +31,16 @@ def process_pageindex():
     
     if not file_paths:
         print(f"No PDF files found in {DATA_DIR}")
-        print("Please place PDF files in the data/file/ directory")
+        print("Please place PDF files in lib/PageIndex/tests/pdfs/ or upload via the web interface")
         return
 
     # Configure PageIndex options
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-2024-11-20")  # PageIndex 預設用較強的模型
     opt = config(
-        model='gpt-4o-2024-11-20',  # or use gpt-3.5-turbo for faster/cheaper
+        model=model,
         toc_check_page_num=20,
         max_page_num_each_node=10,
-        max_token_num_each_node=20000,
+        max_token_num_each_node=12000,
         if_add_node_id='yes',
         if_add_node_summary='yes',
         if_add_doc_description='yes',

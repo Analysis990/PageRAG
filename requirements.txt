@@ -3,10 +3,16 @@ uvicorn
 python-multipart
 python-dotenv
 # RAG
-langchain
+langchain>=0.3.0
 langchain-openai
 langchain-community
+langchain-text-splitters
 qdrant-client
+# PageIndex Dependencies
+pymupdf
+PyPDF2
+pyyaml
+tiktoken
 # Utilities
 httpx
 pydantic

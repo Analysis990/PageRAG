@@ -60,4 +60,4 @@ data/file/*
 *.log
 
 # Third-party libraries (cloned)
-lib/PageIndex/
+
